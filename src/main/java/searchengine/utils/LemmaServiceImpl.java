@@ -1,10 +1,12 @@
-package searchengine.services.ServiceImpl;
+package searchengine.utils;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.WrongCharaterException;
+import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import searchengine.services.LemmaService;
 
@@ -13,17 +15,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+@Component
 @Service
 @Slf4j
 public class LemmaServiceImpl implements LemmaService {
-
-
-    private LuceneMorphology luceneMorphology;
+    private LuceneMorphology russianLuceneMorphology;
+    private LuceneMorphology englishLuceneMorphology;
 
     {
         try {
-            luceneMorphology = new RussianLuceneMorphology();
+            russianLuceneMorphology = new RussianLuceneMorphology();
+            englishLuceneMorphology = new EnglishLuceneMorphology();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -32,7 +34,6 @@ public class LemmaServiceImpl implements LemmaService {
     @Override
     public Map<String, Integer> getLemmasFromText(String html) {
         Map<String, Integer> lemmasInText = new HashMap<>();
-
         String text = Jsoup.parse(html).text();
         List<String> words = new ArrayList<>(List.of(text.toLowerCase().split("[^a-zа-я]+")));
         words.forEach(w -> determineLemma(w, lemmasInText));
@@ -44,8 +45,8 @@ public class LemmaServiceImpl implements LemmaService {
         String preparedWord = word.toLowerCase();
         if (checkMatchWord(preparedWord)) return "";
         try {
-            List<String> normalWordForms = luceneMorphology.getNormalForms(preparedWord);
-            String wordInfo = luceneMorphology.getMorphInfo(preparedWord).toString();
+            List<String> normalWordForms = preparedWord.matches("[a-zA-Z]+") ? englishLuceneMorphology.getNormalForms(preparedWord) : russianLuceneMorphology.getNormalForms(preparedWord);
+            String wordInfo = preparedWord.matches("[a-zA-Z]+") ? englishLuceneMorphology.getMorphInfo(preparedWord).toString() : russianLuceneMorphology.getMorphInfo(preparedWord).toString();
             if (checkWordInfo(wordInfo)) return "";
             return normalWordForms.get(0);
         } catch (WrongCharaterException ex) {
@@ -59,8 +60,8 @@ public class LemmaServiceImpl implements LemmaService {
             if (checkMatchWord(word)) {
                 return;
             }
-            List<String> normalWordForms = luceneMorphology.getNormalForms(word);
-            String wordInfo = luceneMorphology.getMorphInfo(word).toString();
+            List<String> normalWordForms = word.matches("[a-zA-Z]+") ? englishLuceneMorphology.getNormalForms(word) : russianLuceneMorphology.getNormalForms(word);
+            String wordInfo = word.matches("[a-zA-Z]+") ? englishLuceneMorphology.getMorphInfo(word).toString() : russianLuceneMorphology.getMorphInfo(word).toString();
             if (checkWordInfo(wordInfo)) return;
             String normalWord = normalWordForms.get(0);
             lemmasInText.put(normalWord, lemmasInText.containsKey(normalWord) ? (lemmasInText.get(normalWord) + 1) : 1);
@@ -72,7 +73,6 @@ public class LemmaServiceImpl implements LemmaService {
     private boolean checkMatchWord(String word) {
         return word.isEmpty() || String.valueOf(word.charAt(0)).matches("[a-z]") || String.valueOf(word.charAt(0)).matches("[0-9]");
     }
-
     private boolean checkWordInfo(String wordInfo) {
         return wordInfo.contains("ПРЕДЛ") || wordInfo.contains("СОЮЗ") || wordInfo.contains("МЕЖД");
     }

@@ -1,12 +1,9 @@
 package searchengine;
 
-import org.apache.lucene.morphology.LuceneMorphology;
-import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import searchengine.services.LemmaService;
-import searchengine.services.ServiceImpl.LemmaServiceImpl;
+import searchengine.utils.LemmaServiceImpl;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 
 public class Main {

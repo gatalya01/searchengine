@@ -1,10 +1,11 @@
-package searchengine.services.ServiceImpl;
+package searchengine.utils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
+import org.springframework.stereotype.Component;
 import searchengine.config.ConnectionSettings;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
@@ -22,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 @Slf4j
 @RequiredArgsConstructor
 public class PageFinder extends RecursiveAction {

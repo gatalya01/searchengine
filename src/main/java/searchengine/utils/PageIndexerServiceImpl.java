@@ -1,8 +1,9 @@
-package searchengine.services.ServiceImpl;
+package searchengine.utils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import searchengine.model.IndexSearchEntity;
 import searchengine.model.LemmaEntity;
@@ -17,7 +18,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
+@Component
 @Slf4j
 @Service
 @RequiredArgsConstructor
