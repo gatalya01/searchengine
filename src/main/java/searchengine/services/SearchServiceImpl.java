@@ -1,4 +1,4 @@
-package searchengine.utils;
+package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +51,7 @@ public class SearchServiceImpl implements SearchService {
             }
 
             List<SearchDataResponse> searchDataResponses = processSearch(query, site, offset, limit);
-            int count = searchDataResponses.size(); // Общее количество результатов (не зависит от offset и limit)
+            int count = searchDataResponses.size();
             SearchResponse response = new SearchResponse(true, count, searchDataResponses);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -149,7 +149,10 @@ public class SearchServiceImpl implements SearchService {
                 .map(LemmaEntity::getLemma)
                 .toList();
 
-        for (TransferDTO rank : pagesRelevance) {
+        int startIndex = offset;
+        int endIndex = Math.min(offset + limit, pagesRelevance.size());
+        for (int i = startIndex; i < endIndex; i++) {
+            TransferDTO rank = pagesRelevance.get(i);
             Document doc = Jsoup.parse(rank.getPageEntity().getContent());
             List<String> sentences = doc.body().getElementsMatchingOwnText("[\\p{IsCyrillic}]")
                     .stream()
@@ -157,7 +160,7 @@ public class SearchServiceImpl implements SearchService {
                     .toList();
             for (String sentence : sentences) {
                 StringBuilder textFromElement = new StringBuilder(sentence);
-                List<String> words = List.of(sentence.split("[\s:punct]"));
+                List<String> words = List.of(sentence.split("[\\s:punct]"));
                 int searchWords = 0;
                 for (String word : words) {
                     String lemmaFromWord = lemmaService.getLemmaByWord(word.replaceAll("\\p{Punct}", ""));
@@ -180,9 +183,7 @@ public class SearchServiceImpl implements SearchService {
                 }
             }
         }
-        return searchDataResponses.stream()
-                .sorted(Comparator.comparingDouble(SearchDataResponse::getRelevance).reversed())
-                .toList();
+        return searchDataResponses;
     }
 
     private void markWord(StringBuilder textFromElement, String word, int startPosition) {

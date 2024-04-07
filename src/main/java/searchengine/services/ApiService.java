@@ -14,6 +14,6 @@ public interface ApiService {
 
     void refreshEntity(SiteEntity siteEntity, URL url);
 
-    ResponseEntity startIndexing();
+    ResponseEntity startIndexing(AtomicBoolean indexingProcessing);
 
     ResponseEntity stopIndexing();}

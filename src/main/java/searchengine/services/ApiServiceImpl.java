@@ -1,4 +1,4 @@
-package searchengine.utils;
+package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +21,7 @@ import searchengine.responses.OkResponse;
 import searchengine.services.ApiService;
 import searchengine.services.LemmaService;
 import searchengine.services.PageIndexerService;
+import searchengine.utils.PageFinder;
 
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -48,13 +49,13 @@ public class ApiServiceImpl implements ApiService {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @Override
-    public ResponseEntity startIndexing() {
-        if (indexingProcessing.get()) {
+    public ResponseEntity startIndexing(AtomicBoolean indexingProcessing) {
+        if (this.indexingProcessing.get()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new NotOkResponse("Индексация уже запущена"));
         } else {
             executor.submit(() -> {
-                indexingProcessing.set(true);
-                startIndexingProcess(indexingProcessing);
+                this.indexingProcessing.set(true);
+                startIndexingProcess(this.indexingProcessing);
             });
             return ResponseEntity.status(HttpStatus.OK).body(new OkResponse());
         }

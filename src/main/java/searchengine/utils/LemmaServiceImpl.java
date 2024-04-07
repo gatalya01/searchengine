@@ -64,7 +64,10 @@ public class LemmaServiceImpl implements LemmaService {
             String wordInfo = word.matches("[a-zA-Z]+") ? englishLuceneMorphology.getMorphInfo(word).toString() : russianLuceneMorphology.getMorphInfo(word).toString();
             if (checkWordInfo(wordInfo)) return;
             String normalWord = normalWordForms.get(0);
-            lemmasInText.put(normalWord, lemmasInText.containsKey(normalWord) ? (lemmasInText.get(normalWord) + 1) : 1);
+
+            if (!isFunctionalWord(wordInfo)) {
+                lemmasInText.put(normalWord, lemmasInText.containsKey(normalWord) ? (lemmasInText.get(normalWord) + 1) : 1);
+            }
         } catch (RuntimeException ex) {
             log.debug(ex.getMessage());
         }
@@ -73,7 +76,12 @@ public class LemmaServiceImpl implements LemmaService {
     private boolean checkMatchWord(String word) {
         return word.isEmpty() || String.valueOf(word.charAt(0)).matches("[a-z]") || String.valueOf(word.charAt(0)).matches("[0-9]");
     }
+
     private boolean checkWordInfo(String wordInfo) {
-        return wordInfo.contains("ПРЕДЛ") || wordInfo.contains("СОЮЗ") || wordInfo.contains("МЕЖД");
+        return wordInfo.contains("ПРЕДЛ") || wordInfo.contains("СОЮЗ") || wordInfo.contains("МЕЖД") || isFunctionalWord(wordInfo);
+    }
+
+    private boolean isFunctionalWord(String wordInfo) {
+        return wordInfo.contains("PR") || wordInfo.contains("CONJ") || wordInfo.contains("INTJ");
     }
 }
