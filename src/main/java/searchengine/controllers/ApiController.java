@@ -1,6 +1,7 @@
 package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -9,6 +10,7 @@ import searchengine.config.SitesList;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.responses.NotOkResponse;
 import searchengine.responses.OkResponse;
+import searchengine.responses.SearchResponse;
 import searchengine.services.ApiService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
@@ -16,6 +18,8 @@ import searchengine.services.StatisticsService;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -84,17 +88,23 @@ public class ApiController {
                     .body(new NotOkResponse("Некорректный URL"));
         }
     }
-
-    @GetMapping("/search")
+    @GetMapping("/api/search")
     public ResponseEntity<Object> search(
-            @RequestParam(required = false) String query,
-            @RequestParam(required = false) String site,
-            @RequestParam(required = false, defaultValue = "0") Integer offset,
-            @RequestParam(required = false, defaultValue = "20") Integer limit
-    ) throws IOException {
-        if (query == null || query.isBlank()) {
-            return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
+            @RequestParam(name="query", required=false, defaultValue="") String query,
+            @RequestParam(name="site", required=false, defaultValue="") String site,
+            @RequestParam(name="offset", required=false, defaultValue="0") Integer offset,
+            @RequestParam(name="limit", required=false, defaultValue="20") Integer limit
+    ) {
+        try {
+            if (query == null || query.isBlank()) {
+                return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
+            }
+            ResponseEntity<Object> searchResponse = searchService.search(query, site, offset, limit);
+            Map<String, Object> responseBody = new HashMap<>();
+            responseBody.put("result", true);
+            return ResponseEntity.ok(responseBody);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new NotOkResponse("Ошибка при выполнении поиска"));
         }
-        return searchService.search(query, site, offset, limit);
     }
 }
