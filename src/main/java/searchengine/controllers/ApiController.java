@@ -66,7 +66,7 @@ public class ApiController {
     }
 
     @PostMapping("/indexPage")
-    public ResponseEntity<?> indexPage(@RequestParam String url) {
+    public ResponseEntity indexPage(@RequestParam("url") String url) {
         try {
             URL refUrl = new URL(url);
             boolean isValidSite = sitesList.getSites().stream()
