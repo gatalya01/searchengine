@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.StatisticsResponse;
+import searchengine.model.SiteEntity;
 import searchengine.responses.NotOkResponse;
 import searchengine.responses.OkResponse;
 import searchengine.responses.SearchResponse;
@@ -66,26 +67,32 @@ public class ApiController {
     }
 
     @PostMapping("/indexPage")
-    public ResponseEntity indexPage(@RequestParam("url") String url) {
+    public ResponseEntity indexPage(@RequestParam String url) throws IOException {
         try {
             URL refUrl = new URL(url);
-            boolean isValidSite = sitesList.getSites().stream()
-                    .anyMatch(site -> {
+            SiteEntity siteEntity = sitesList.getSites().stream()
+                    .filter(site -> {
                         try {
-                            URL siteUrl = new URL(site.getUrl());
-                            return refUrl.getHost().equals(siteUrl.getHost());
+                            return refUrl.getHost().equals(new URL(site.getUrl()).getHost());
                         } catch (MalformedURLException e) {
                             return false;
                         }
-                    });
-            if (!isValidSite) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(new NotOkResponse("Данная страница находится за пределами сайтов, указанных в конфигурационном файле"));
-            }
-            return ResponseEntity.ok(new OkResponse());
-        } catch (MalformedURLException ex) {
+                    })
+                    .findFirst()
+                    .map(site -> {
+                        SiteEntity entity = new SiteEntity();
+                        entity.setName(site.getName());
+                        entity.setUrl(site.getUrl());
+                        return entity;
+                    })
+                    .orElseThrow();
+
+            apiService.refreshEntity(siteEntity, refUrl);
+
+            return ResponseEntity.ok().body(new OkResponse());
+        } catch (RuntimeException ex) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new NotOkResponse("Некорректный URL"));
+                    .body(new NotOkResponse("Данная страница находится за пределами сайтов, указанных в конфигурационном файле"));
         }
     }
     @GetMapping("/api/search")
@@ -94,17 +101,10 @@ public class ApiController {
             @RequestParam(name="site", required=false, defaultValue="") String site,
             @RequestParam(name="offset", required=false, defaultValue="0") Integer offset,
             @RequestParam(name="limit", required=false, defaultValue="20") Integer limit
-    ) {
-        try {
-            if (query == null || query.isBlank()) {
-                return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
-            }
-            ResponseEntity<Object> searchResponse = searchService.search(query, site, offset, limit);
-            Map<String, Object> responseBody = new HashMap<>();
-            responseBody.put("result", true);
-            return ResponseEntity.ok(responseBody);
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new NotOkResponse("Ошибка при выполнении поиска"));
+    ) throws IOException {
+        if (query == null || query.isBlank()) {
+            return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
         }
+        return searchService.search(query, site, offset, limit);
     }
 }
