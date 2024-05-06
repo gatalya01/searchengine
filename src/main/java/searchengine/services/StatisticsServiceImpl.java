@@ -45,7 +45,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         for (SiteEntity siteEntity : sites) {
             Site site = new Site();
             site.setName(siteEntity.getName());
-            site.setUrl(String.valueOf(new URL(siteEntity.getUrl())));
+            site.setUrl(new URL(siteEntity.getUrl()));
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl().toString());

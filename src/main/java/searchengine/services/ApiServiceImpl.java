@@ -18,14 +18,7 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.responses.NotOkResponse;
 import searchengine.responses.OkResponse;
-import searchengine.services.ApiService;
-import searchengine.services.LemmaService;
-import searchengine.services.PageIndexerService;
 import searchengine.utils.PageFinder;
-
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -80,33 +73,6 @@ public class ApiServiceImpl implements ApiService {
         } catch (RuntimeException | InterruptedException ex) {
             indexingProcessing.set(false);
             log.error("Error: ", ex);
-        }
-    }
-
-    @Override
-    public ResponseEntity indexPage(String url) {
-        try {
-            URL refUrl = new URL(url);
-            SiteEntity siteEntity = new SiteEntity();
-            sitesToIndexing.getSites().stream()
-                    .filter(site -> {
-                        try {
-                            return refUrl.getHost().equals(new URI(site.getUrl().toString()).getHost());
-                        } catch (URISyntaxException e) {
-                            log.error("Error parsing URL: {}", e.getMessage());
-                            return false;
-                        }
-                    });
-
-            if (siteEntity.getName() == null) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(new NotOkResponse("Данная страница находится за пределами сайтов указанных в конфигурационном файле"));
-            }
-
-            refreshEntity(siteEntity, refUrl);
-            return ResponseEntity.status(HttpStatus.OK).body(new OkResponse());
-        } catch (MalformedURLException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new NotOkResponse("Некорректный URL"));
         }
     }
 

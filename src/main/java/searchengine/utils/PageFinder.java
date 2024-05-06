@@ -2,6 +2,7 @@ package searchengine.utils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
@@ -14,6 +15,7 @@ import searchengine.repositories.SiteRepository;
 import searchengine.services.LemmaService;
 import searchengine.services.PageIndexerService;
 
+import java.net.URL;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -118,9 +120,10 @@ public class PageFinder extends RecursiveAction {
         indexingPageEntity.setSiteId(siteDomain.getId());
 
         try {
-            org.jsoup.Connection connect = Jsoup.connect(siteDomain.getUrl() + page).userAgent(connection.getUserAgent()).referrer(connection.getReferer());
+            URL url = new URL(siteDomain.getUrl() + page);
+            Connection connect = Jsoup.connect(url.toString()).userAgent(connection.getUserAgent()).referrer(connection.getReferer());
             Document doc = connect.timeout(60000).get();
-            indexingPageEntity.setContent(doc.head() + String.valueOf(doc.body()));
+            indexingPageEntity.setContent(cleanHtml(doc.head() + String.valueOf(doc.body())));
             indexingPageEntity.setCode(doc.connection().response().statusCode());
             if (indexingPageEntity.getContent() == null || indexingPageEntity.getContent().isEmpty() || indexingPageEntity.getContent().isBlank()) {
                 throw new IllegalArgumentException("Content of site id:" + indexingPageEntity.getSiteId() + ", page:" + indexingPageEntity.getPath() + " is null or empty");
@@ -174,5 +177,13 @@ public class PageFinder extends RecursiveAction {
             errorCode = -1;
         }
         indexingPageEntity.setCode(errorCode);
+    }
+    private String cleanHtml(String htmlContent) {
+        Document doc = Jsoup.parse(htmlContent);
+        // Remove all HTML tags
+        String cleanedContent = doc.text();
+        // Remove special characters
+        cleanedContent = cleanedContent.replaceAll("[^\\p{L}\\p{Nd}]", " ");
+        return cleanedContent;
     }
 }

@@ -1,7 +1,6 @@
 package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,8 +18,6 @@ import searchengine.services.StatisticsService;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,34 +64,23 @@ public class ApiController {
     }
 
     @PostMapping("/indexPage")
-    public ResponseEntity indexPage(@RequestParam String url) throws IOException {
+    public ResponseEntity indexPage(@RequestParam(name = "url") String url) throws IOException {
+        URL refUrl = new URL(url);
+        SiteEntity sitePage = new SiteEntity();
         try {
-            URL refUrl = new URL(url);
-            SiteEntity siteEntity = sitesList.getSites().stream()
-                    .filter(site -> {
-                        try {
-                            return refUrl.getHost().equals(new URL(site.getUrl()).getHost());
-                        } catch (MalformedURLException e) {
-                            return false;
-                        }
-                    })
-                    .findFirst()
-                    .map(site -> {
-                        SiteEntity entity = new SiteEntity();
-                        entity.setName(site.getName());
-                        entity.setUrl(site.getUrl());
-                        return entity;
-                    })
-                    .orElseThrow();
-
-            apiService.refreshEntity(siteEntity, refUrl);
-
-            return ResponseEntity.ok().body(new OkResponse());
+            sitesList.getSites().stream().filter(site -> refUrl.getHost().equals(site.getUrl().getHost())).findFirst().map(site -> {
+                sitePage.setName(site.getName());
+                sitePage.setUrl(site.getUrl().toString());
+                return sitePage;
+            }).orElseThrow();
         } catch (RuntimeException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new NotOkResponse("Данная страница находится за пределами сайтов, указанных в конфигурационном файле"));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).
+                    body(new NotOkResponse("Данная страница находится за пределами сайтов указанных в конфигурационном файле"));
         }
+        apiService.refreshEntity(sitePage, refUrl);
+        return ResponseEntity.status(HttpStatus.OK).body(new OkResponse());
     }
+
     @GetMapping("/api/search")
     public ResponseEntity<Object> search(
             @RequestParam(name="query", required=false, defaultValue="") String query,

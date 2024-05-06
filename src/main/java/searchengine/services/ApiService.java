@@ -10,8 +10,6 @@ public interface ApiService {
 
     void startIndexingProcess(AtomicBoolean indexingProcessing);
 
-    ResponseEntity indexPage(String url);
-
     void refreshEntity(SiteEntity siteEntity, URL url);
 
     ResponseEntity startIndexing(AtomicBoolean indexingProcessing);
