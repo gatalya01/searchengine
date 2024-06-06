@@ -20,8 +20,8 @@ indexing-settings:
       name: Лента.ру
     - url: https://playback.ru
       name: PlayBack.Ru
-    - url: https://skillbox.ru
-      name: Skillbox
+    - url: https://vetka-crb.by
+      name: vetka-crb
 
 connection-settings:
   userAgent: Mozilla/5.0 (X11; Fedora;Linux x86; rv:60.0) Gecko/20100101 Firefox/60.0

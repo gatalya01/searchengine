@@ -45,11 +45,8 @@ public class PageIndexerServiceImpl implements PageIndexerService {
         long start = System.currentTimeMillis();
         try {
             Map<String, Integer> lemmas = lemmaService.getLemmasFromText(html);
-            //уменьшение frequency у лемм которые присутствуют на обновляемой странице
             refreshLemma(refreshPageEntity);
-            //удаление индекса
             indexSearchRepository.deleteAllByPageId(refreshPageEntity.getId());
-            //обновление лемм и индесов у обнолвенной страницы
             lemmas.entrySet().parallelStream().forEach(entry -> saveLemma(entry.getKey(), entry.getValue(), refreshPageEntity));
             log.debug("Обновление индекса страницы " + (System.currentTimeMillis() - start) + " lemmas:" + lemmas.size());
         } catch (IOException e) {

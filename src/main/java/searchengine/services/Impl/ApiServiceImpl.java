@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.Impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +18,9 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.responses.NotOkResponse;
 import searchengine.responses.OkResponse;
+import searchengine.services.ApiService;
+import searchengine.services.LemmaService;
+import searchengine.services.PageIndexerService;
 import searchengine.utils.PageFinder;
 import java.net.URL;
 import java.util.ArrayList;
@@ -26,7 +29,6 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@Component
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -38,34 +40,11 @@ public class ApiServiceImpl implements ApiService {
     private final SitesList sitesToIndexing;
     private final Set<SiteEntity> siteEntityAllFromDB;
     private final ConnectionSettings connection;
-    private final AtomicBoolean indexingProcessing = new AtomicBoolean(false);
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private AtomicBoolean indexingProcessing;
 
     @Override
-    public ResponseEntity startIndexing(AtomicBoolean indexingProcessing) {
-        if (this.indexingProcessing.get()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(new NotOkResponse("Индексация уже запущена"));
-        } else {
-            executor.submit(() -> {
-                this.indexingProcessing.set(true);
-                startIndexingProcess(this.indexingProcessing);
-            });
-            return ResponseEntity.status(HttpStatus.OK).body(new OkResponse());
-        }
-    }
-
-    @Override
-    public ResponseEntity stopIndexing() {
-        if (!indexingProcessing.get()) {
-            return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(new NotOkResponse("Индексация не запущена"));
-        } else {
-            indexingProcessing.set(false);
-            return ResponseEntity.status(HttpStatus.OK).body(new OkResponse());
-        }
-    }
-
-    @Override
-    public void startIndexingProcess(AtomicBoolean indexingProcessing) {
+    public void startIndexing(AtomicBoolean indexingProcessing) {
+        this.indexingProcessing = indexingProcessing;
         try {
             deleteSiteEntityAndPagesInDB();
             addSiteEntityToDB();
