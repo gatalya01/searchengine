@@ -41,8 +41,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         total.setIndexing(true);
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<SiteEntity> sites = siteRepository.findAll();
-        for (SiteEntity siteEntity : sites) {
+        for (SiteEntity siteEntity : siteEntities) {
             Site site = new Site();
             site.setName(siteEntity.getName());
             site.setUrl(new URL(siteEntity.getUrl()));
@@ -55,7 +54,11 @@ public class StatisticsServiceImpl implements StatisticsService {
             item.setLemmas(lemmas);
             item.setStatus(String.valueOf(siteEntity.getStatus()));
             item.setError(siteEntity.getLastError());
-            item.setStatusTime(siteEntity.getStatusTime().getTime());
+            if (siteEntity.getStatusTime() != null) {
+                item.setStatusTime(siteEntity.getStatusTime().getTime());
+            } else {
+                item.setStatusTime(0L);
+            }
             total.setPages(total.getPages() + pages);
             total.setLemmas(total.getLemmas() + lemmas);
             detailed.add(item);

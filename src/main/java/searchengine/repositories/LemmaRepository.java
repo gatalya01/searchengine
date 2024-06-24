@@ -20,6 +20,6 @@ public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     @Query(value = "select l.id from LemmaEntity l where l.lemma = :lemma")
     Integer findIdLemma(String lemma);
 
-    @Query(value = "select l from LemmaEntity l where l.lemma = :lemma and (:siteId is null or l.siteId = :siteId)")
+    @Query(value = "select l from LemmaEntity l where lower(l.lemma) = lower(:lemma) and (:siteId is null or l.siteId = :siteId)")
     List<LemmaEntity> findLemmasByLemmaAndSiteId(String lemma, Integer siteId);
 }

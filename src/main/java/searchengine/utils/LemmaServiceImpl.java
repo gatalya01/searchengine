@@ -1,8 +1,6 @@
 package searchengine.utils;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.lucene.morphology.LuceneMorphology;
-import org.apache.lucene.morphology.WrongCharaterException;
 import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
@@ -35,7 +33,7 @@ public class LemmaServiceImpl implements LemmaService {
     public Map<String, Integer> getLemmasFromText(String html) {
         Map<String, Integer> lemmasInText = new HashMap<>();
         String text = Jsoup.parse(html).text();
-        List<String> words = new ArrayList<>(List.of(text.toLowerCase().split("[^a-zа-я]+")));
+        List<String> words = new ArrayList<>(List.of(text.split("[^a-zA-Zа-яА-Я]+")));
         words.forEach(w -> determineLemma(w, lemmasInText));
         return lemmasInText;
     }
@@ -49,7 +47,7 @@ public class LemmaServiceImpl implements LemmaService {
             String wordInfo = preparedWord.matches("[a-zA-Z]+") ? englishLuceneMorphology.getMorphInfo(preparedWord).toString() : russianLuceneMorphology.getMorphInfo(preparedWord).toString();
             if (checkWordInfo(wordInfo)) return "";
             return normalWordForms.get(0);
-        } catch (WrongCharaterException ex) {
+        } catch (RuntimeException ex) {
             log.debug(ex.getMessage());
         }
         return "";
@@ -74,7 +72,7 @@ public class LemmaServiceImpl implements LemmaService {
     }
 
     private boolean checkMatchWord(String word) {
-        return word.isEmpty() || String.valueOf(word.charAt(0)).matches("[a-z]") || String.valueOf(word.charAt(0)).matches("[0-9]");
+        return word.isEmpty() || !word.matches("[a-zA-Zа-яА-Я]+") || word.equals(word.toUpperCase());
     }
 
     private boolean checkWordInfo(String wordInfo) {

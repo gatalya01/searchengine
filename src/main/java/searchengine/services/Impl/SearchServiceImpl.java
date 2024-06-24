@@ -7,7 +7,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import searchengine.dto.statistics.TransferDTO;
 import searchengine.model.IndexSearchEntity;
@@ -27,7 +26,6 @@ import searchengine.services.SearchService;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-@Component
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -45,7 +43,6 @@ public class SearchServiceImpl implements SearchService {
         if (query == null || query.isBlank()) {
             return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
         }
-
         try {
             if (checkIndexStatusNotIndexed(site)) {
                 return ResponseEntity.badRequest().body(new NotOkResponse("Индексация сайта для поиска не закончена"));
@@ -69,28 +66,31 @@ public class SearchServiceImpl implements SearchService {
                 .map(it -> lemmaRepository.findLemmasByLemmaAndSiteId(it, siteTarget != null ? siteTarget.getId() : null))
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
+
         lemmasForSearches = filterLemmas(lemmasForSearches, countPages);
+
         if (lemmasForSearches.isEmpty()) {
             return Collections.emptyList();
         }
+
         List<LemmaEntity> sortedLemmasToSearches = sortLemmas(lemmasForSearches);
         Map<Integer, IndexSearchEntity> indexesByLemmas = findIndexesByLemmas(sortedLemmasToSearches);
+
         if (indexesByLemmas.isEmpty()) {
             return Collections.emptyList();
         }
+
         List<TransferDTO> pagesRelevance = calculatePageRelevance(indexesByLemmas);
         return prepareSearchDataResponses(lemmasForSearches, pagesRelevance, offset, limit);
     }
 
     private List<LemmaEntity> filterLemmas(List<LemmaEntity> lemmasForSearches, Integer countPages) {
-        lemmasForSearches.removeIf(e -> {
-            Integer lemmaFrequency = lemmaRepository.findCountPageByLemma(e.getLemma(), e.getSiteId());
-            if (lemmaFrequency == null) return true;
-            log.info("LemmaEntity frequency({}): {}", e, lemmaFrequency);
-            log.info("Frequency limit: {}", (double) lemmaFrequency / countPages);
-            return ((double) lemmaFrequency / countPages > frequencyLimitProportion);
-        });
-        return lemmasForSearches;
+        return lemmasForSearches.stream()
+                .filter(e -> {
+                    Integer lemmaFrequency = lemmaRepository.findCountPageByLemma(e.getLemma(), e.getSiteId());
+                    return lemmaFrequency != null && ((double) lemmaFrequency / countPages <= frequencyLimitProportion);
+                })
+                .collect(Collectors.toList());
     }
 
     private List<LemmaEntity> sortLemmas(List<LemmaEntity> lemmasForSearches) {
@@ -106,39 +106,44 @@ public class SearchServiceImpl implements SearchService {
                 .stream()
                 .collect(Collectors.toMap(IndexSearchEntity::getPageId, index -> index));
 
-        for (int i = 1; i <= sortedLemmasToSearches.size() - 1; i++) {
+        for (int i = 1; i < sortedLemmasToSearches.size(); i++) {
             List<IndexSearchEntity> indexNextLemma = indexRepository.findIndexesByLemma(sortedLemmasToSearches.get(i).getId());
-            List<Integer> pagesToSave = new ArrayList<>();
-            for (IndexSearchEntity indexNext : indexNextLemma) {
-                if (indexesByLemmas.containsKey(indexNext.getPageId())) {
-                    pagesToSave.add(indexNext.getPageId());
-                }
-            }
-            indexesByLemmas.entrySet().removeIf(entry -> !pagesToSave.contains(entry.getKey()));
+            List<Integer> pagesToSave = indexNextLemma.stream()
+                    .filter(indexNext -> indexesByLemmas.containsKey(indexNext.getPageId()))
+                    .map(IndexSearchEntity::getPageId)
+                    .collect(Collectors.toList());
+            indexesByLemmas.keySet().retainAll(pagesToSave);
         }
         return indexesByLemmas;
     }
 
     private List<TransferDTO> calculatePageRelevance(Map<Integer, IndexSearchEntity> indexesByLemmas) {
         Set<TransferDTO> pagesRelevance = new HashSet<>();
-        int pageId = indexesByLemmas.values().stream().toList().get(0).getPageId();
         TransferDTO rankPage = new TransferDTO();
+        int pageId = -1;
+
         for (IndexSearchEntity index : indexesByLemmas.values()) {
-            if (index.getPageId() == pageId) {
-                rankPage.setPageEntity(index.getPageEntity());
-            } else {
-                rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
-                pagesRelevance.add(rankPage);
+            if (index.getPageId() != pageId) {
+                if (pageId != -1) {
+                    rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
+                    pagesRelevance.add(rankPage);
+                }
                 rankPage = new TransferDTO();
                 rankPage.setPageEntity(index.getPageEntity());
+                rankPage.setPageId(index.getPageId());
                 pageId = index.getPageId();
             }
-            rankPage.setPageId(index.getPageId());
             rankPage.setAbsRelevance(rankPage.getAbsRelevance() + index.getLemmaCount());
-            if (rankPage.getMaxLemmaRank() < index.getLemmaCount()) rankPage.setMaxLemmaRank(index.getLemmaCount());
+            if (rankPage.getMaxLemmaRank() < index.getLemmaCount()) {
+                rankPage.setMaxLemmaRank(index.getLemmaCount());
+            }
         }
-        rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
-        pagesRelevance.add(rankPage);
+
+        if (pageId != -1) {
+            rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
+            pagesRelevance.add(rankPage);
+        }
+
         return pagesRelevance.stream()
                 .sorted(Comparator.comparingDouble(TransferDTO::getRelativeRelevance).reversed())
                 .toList();
@@ -155,32 +160,37 @@ public class SearchServiceImpl implements SearchService {
         for (int i = startIndex; i < endIndex; i++) {
             TransferDTO rank = pagesRelevance.get(i);
             Document doc = Jsoup.parse(rank.getPageEntity().getContent());
-            List<String> sentences = doc.body().getElementsMatchingOwnText("[\\p{IsCyrillic}]")
+            List<String> sentences = doc.body().getElementsMatchingOwnText(".*\\p{IsCyrillic}.*|.*\\p{IsLatin}.*")
                     .stream()
                     .map(Element::text)
                     .toList();
+
             for (String sentence : sentences) {
                 StringBuilder textFromElement = new StringBuilder(sentence);
-                List<String> words = List.of(sentence.split("[\\s:punct]"));
+                List<String> words = List.of(sentence.split("\\s+"));
                 int searchWords = 0;
+
                 for (String word : words) {
                     String lemmaFromWord = lemmaService.getLemmaByWord(word.replaceAll("\\p{Punct}", ""));
                     if (simpleLemmasFromSearch.contains(lemmaFromWord)) {
                         markWord(textFromElement, word, 0);
-                        searchWords += 1;
+                        searchWords++;
                     }
                 }
-                if (searchWords != 0) {
-                    SiteEntity siteEntity = siteRepository.findById(pageRepository.findById(rank.getPageId()).get().getSiteId()).get();
-                    searchDataResponses.add(new SearchDataResponse(
-                            siteEntity.getUrl(),
-                            siteEntity.getName(),
-                            rank.getPageEntity().getPath(),
-                            doc.title(),
-                            textFromElement.toString(),
-                            rank.getRelativeRelevance(),
-                            searchWords
-                    ));
+
+                if (searchWords > 0) {
+                    SiteEntity siteEntity = siteRepository.findById(pageRepository.findById(rank.getPageId()).get().getSiteId()).orElse(null);
+                    if (siteEntity != null) {
+                        searchDataResponses.add(new SearchDataResponse(
+                                siteEntity.getUrl(),
+                                siteEntity.getName(),
+                                rank.getPageEntity().getPath(),
+                                doc.title(),
+                                textFromElement.toString(),
+                                rank.getRelativeRelevance(),
+                                searchWords
+                        ));
+                    }
                 }
             }
         }
@@ -189,21 +199,19 @@ public class SearchServiceImpl implements SearchService {
 
     private void markWord(StringBuilder textFromElement, String word, int startPosition) {
         int start = textFromElement.indexOf(word, startPosition);
+        if (start == -1) return;
         if (textFromElement.indexOf("<b>", start - 3) == (start - 3)) {
             markWord(textFromElement, word, start + word.length());
             return;
         }
         int end = start + word.length();
         textFromElement.insert(start, "<b>");
-        if (end == -1) {
-            textFromElement.insert(textFromElement.length(), "</b>");
-        } else textFromElement.insert(end + 3, "</b>");
+        textFromElement.insert(end + 3, "</b>");
     }
 
     private Boolean checkIndexStatusNotIndexed(String site) {
         if (site == null || site.isBlank()) {
-            List<SiteEntity> sites = siteRepository.findAll();
-            return sites.stream().anyMatch(s -> !s.getStatus().equals(indexSuccessStatus));
+            return siteRepository.findAll().stream().anyMatch(s -> !s.getStatus().equals(indexSuccessStatus));
         }
         return !siteRepository.getSitePageByUrl(site).getStatus().equals(indexSuccessStatus);
     }

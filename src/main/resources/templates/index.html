@@ -31,7 +31,7 @@
   <script>
      var backendApiUrl = 'api'
   </script>
-  
+
   <script defer src="/assets/js/scripts.js?v=38874865"></script>
 
 </head>
@@ -122,33 +122,26 @@
             <div class="Tabs-block" id="search">
               <div class="Section">
                 <div class="Section-header">
-                  <h2 class="Section-title">Search
-                  </h2>
+                  <h2 class="Section-title">Search</h2>
                 </div>
-                <form class="form form_close" action="#" method="post" data-send="search" data-sendlimit="10">
+                <form class="form form_close" id="searchForm" action="#" method="post" data-send="search" data-sendlimit="10">
                   <div class="form-group">
                     <div class="form-selectWrap">
-                      <!-- - var options = setOptions(items, ['value', 'selected', 'disabled']);-->
                       <select class="form-select" name="site">
-                        <option value="" selected="selected">All sites
-                        </option>
+                        <option value="" selected="selected">All sites</option>
                       </select>
                     </div>
                   </div>
                   <div class="form-group form-group_row">
                     <input class="form-input" id="query" name="query" type="text" placeholder="Query"/>
-                    <button class="btn btn_primary form-btn" type="submit">Search
-                    </button>
+                    <button class="btn btn_primary form-btn" type="submit">Search</button>
                   </div>
                 </form>
                 <div class="SearchResult">
-                  <strong class="SearchResult-title">Found&#32;<span class="SearchResult-amount">0</span>&#32;results
-                  </strong>
-                  <div class="SearchResult-content">
-                  </div>
+                  <strong class="SearchResult-title">Found <span class="SearchResult-amount">0</span> results</strong>
+                  <div class="SearchResult-content"></div>
                   <div class="SearchResult-footer SearchResult-footer_hide">
-                    <button class="btn btn_primary" data-send="search" data-sendtype="next">Show more<span class="SearchResult-remain">(0)</span>
-                    </button>
+                    <button class="btn btn_primary" id="showMoreBtn">Show more<span class="SearchResult-remain">(0)</span></button>
                   </div>
                 </div>
               </div>
@@ -159,4 +152,70 @@
     </div>
   </div>
   <script src="/assets/plg/jQuery/jquery-3.5.1.min.js"></script>
-</body></html>
+  <script>
+    $(document).ready(function() {
+        let offset = 0;
+        const limit = 10;
+
+        $('#searchForm').on('submit', function(event) {
+            event.preventDefault();
+            offset = 0;
+            performSearch();
+        });
+
+        $('#showMoreBtn').on('click', function() {
+            offset += limit;
+            performSearch(true);
+        });
+
+        function performSearch(isLoadMore = false) {
+            const query = $('#query').val();
+            const site = $('select[name="site"]').val();
+
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+
+            $.ajax({
+                url: '/api/search',
+                type: 'GET',
+                data: {
+                    query: query,
+                    site: site,
+                    offset: offset,
+                    limit: limit
+                },
+                success: function(response) {
+                    if (!isLoadMore) {
+                        $('.SearchResult-content').empty();
+                    }
+
+                    const results = response.data;
+                    const totalCount = response.count;
+                    $('.SearchResult-amount').text(totalCount);
+
+                    results.forEach(result => {
+                        const resultHtml = `<div class="SearchResult-item">
+                            <a href="${result.url}" target="_blank">${result.title}</a>
+                            <p>${result.content}</p>
+                        </div>`;
+                        $('.SearchResult-content').append(resultHtml);
+                    });
+
+                    if (offset + limit < totalCount) {
+                        $('.SearchResult-footer').removeClass('SearchResult-footer_hide');
+                        $('#showMoreBtn .SearchResult-remain').text(`(${totalCount - offset - limit})`);
+                    } else {
+                        $('.SearchResult-footer').addClass('SearchResult-footer_hide');
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while searching. Please try again.');
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>

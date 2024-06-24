@@ -6,7 +6,7 @@ import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
-import org.springframework.stereotype.Component;
+
 import searchengine.config.ConnectionSettings;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
