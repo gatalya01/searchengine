@@ -48,9 +48,10 @@ public class SearchServiceImpl implements SearchService {
                 return ResponseEntity.badRequest().body(new NotOkResponse("Индексация сайта для поиска не закончена"));
             }
 
-            List<SearchDataResponse> searchDataResponses = processSearch(query, site, offset, limit);
+            List<SearchDataResponse> searchDataResponses = processSearch(query, site);
             int count = searchDataResponses.size();
-            SearchResponse response = new SearchResponse(true, count, searchDataResponses);
+            List<SearchDataResponse> paginatedResponses = paginateResults(searchDataResponses, offset, limit);
+            SearchResponse response = new SearchResponse(true, count, paginatedResponses);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error occurred during search: {}", e.getMessage());
@@ -58,7 +59,7 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private List<SearchDataResponse> processSearch(String query, String site, Integer offset, Integer limit) throws IOException {
+    private List<SearchDataResponse> processSearch(String query, String site) throws IOException {
         SiteEntity siteTarget = siteRepository.getSitePageByUrl(site);
         Integer countPages = siteTarget != null ? pageRepository.getCountPages(siteTarget.getId()) : pageRepository.getCountPages(null);
 
@@ -81,7 +82,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         List<TransferDTO> pagesRelevance = calculatePageRelevance(indexesByLemmas);
-        return prepareSearchDataResponses(lemmasForSearches, pagesRelevance, offset, limit);
+        return prepareSearchDataResponses(lemmasForSearches, pagesRelevance);
     }
 
     private List<LemmaEntity> filterLemmas(List<LemmaEntity> lemmasForSearches, Integer countPages) {
@@ -149,16 +150,13 @@ public class SearchServiceImpl implements SearchService {
                 .toList();
     }
 
-    private List<SearchDataResponse> prepareSearchDataResponses(List<LemmaEntity> lemmasForSearches, List<TransferDTO> pagesRelevance, Integer offset, Integer limit) {
+    private List<SearchDataResponse> prepareSearchDataResponses(List<LemmaEntity> lemmasForSearches, List<TransferDTO> pagesRelevance) {
         List<SearchDataResponse> searchDataResponses = new ArrayList<>();
         List<String> simpleLemmasFromSearch = lemmasForSearches.stream()
                 .map(LemmaEntity::getLemma)
                 .toList();
 
-        int startIndex = offset;
-        int endIndex = Math.min(offset + limit, pagesRelevance.size());
-        for (int i = startIndex; i < endIndex; i++) {
-            TransferDTO rank = pagesRelevance.get(i);
+        for (TransferDTO rank : pagesRelevance) {
             Document doc = Jsoup.parse(rank.getPageEntity().getContent());
             List<String> sentences = doc.body().getElementsMatchingOwnText(".*\\p{IsCyrillic}.*|.*\\p{IsLatin}.*")
                     .stream()
@@ -214,5 +212,11 @@ public class SearchServiceImpl implements SearchService {
             return siteRepository.findAll().stream().anyMatch(s -> !s.getStatus().equals(indexSuccessStatus));
         }
         return !siteRepository.getSitePageByUrl(site).getStatus().equals(indexSuccessStatus);
+    }
+
+    private List<SearchDataResponse> paginateResults(List<SearchDataResponse> searchDataResponses, Integer offset, Integer limit) {
+        int startIndex = Math.max(0, offset);
+        int endIndex = Math.min(offset + limit, searchDataResponses.size());
+        return searchDataResponses.subList(startIndex, endIndex);
     }
 }
