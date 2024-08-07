@@ -16,19 +16,12 @@ spring:
 
 indexing-settings:
   sites:
-    - url: https://sendel.ru/
-      name: test
-    - url: https://vetka-crb.by
-      name: vetka-crb
-
-#indexing-settings:
-#  sites:
-#    - url: https://lenta.ru
-#      name: Лента.ру
-#    - url: https://playback.ru
-#      name: PlayBack.Ru
-#    - url: https://vetka-crb.by
-#      name: vetka-crb
+    - url:  https://volochek.life
+      name: volochek
+    - url:  https://playback.ru
+      name: PlayBack.Ru
+    - url:  http://radiomv.ru/
+      name: radio
 
 connection-settings:
   userAgent: Mozilla/5.0 (X11; Fedora;Linux x86; rv:60.0) Gecko/20100101 Firefox/60.0
