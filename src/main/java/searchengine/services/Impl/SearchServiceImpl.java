@@ -43,12 +43,42 @@ public class SearchServiceImpl implements SearchService {
         if (query == null || query.isBlank()) {
             return ResponseEntity.badRequest().body(new NotOkResponse("Задан пустой поисковый запрос"));
         }
+
+        if (checkIndexStatusNotIndexed(site)) {
+            return ResponseEntity.badRequest().body(new NotOkResponse("Индексация сайта для поиска не закончена"));
+        }
+
         try {
-            if (checkIndexStatusNotIndexed(site)) {
-                return ResponseEntity.badRequest().body(new NotOkResponse("Индексация сайта для поиска не закончена"));
+            SiteEntity siteTarget = siteRepository.getSitePageByUrl(site);
+            Integer countPages = siteTarget != null ? pageRepository.getCountPages(siteTarget.getId()) : pageRepository.getCountPages(null);
+
+            // Инициализируем леммы для поиска и фильтруем частотные леммы
+            List<LemmaEntity> lemmasForSearch = lemmaService.getLemmasFromText(query).keySet().stream()
+                    .map(lemma -> lemmaRepository.findLemmasByLemmaAndSiteId(lemma, siteTarget != null ? siteTarget.getId() : null))
+                    .flatMap(Collection::stream)
+                    .collect(Collectors.toList());
+            filterFrequentLemmas(lemmasForSearch, countPages);
+
+            if (lemmasForSearch.isEmpty()) {
+                return ResponseEntity.ok(new SearchResponse(true, 0, Collections.emptyList()));
             }
 
-            List<SearchDataResponse> searchDataResponses = processSearch(query, site);
+            // Сортируем леммы по частоте
+            List<LemmaEntity> sortedLemmasToSearch = sortLemmasByFrequency(lemmasForSearch);
+
+            // Ищем страницы по леммам
+            Map<Integer, IndexSearchEntity> indexesByLemmas = findPagesByLemmas(sortedLemmasToSearch);
+
+            if (indexesByLemmas.isEmpty()) {
+                return ResponseEntity.ok(new SearchResponse(true, 0, Collections.emptyList()));
+            }
+
+            // Рассчитываем релевантность страниц
+            List<TransferDTO> pagesRelevanceSorted = calculatePageRelevance(indexesByLemmas);
+
+            // Конвертируем результаты в SearchDataResponse без ограничения на количество сниппетов
+            List<SearchDataResponse> searchDataResponses = convertToSearchDataResponses(lemmasForSearch, pagesRelevanceSorted);
+
             int count = searchDataResponses.size();
             List<SearchDataResponse> paginatedResponses = paginateResults(searchDataResponses, offset, limit);
             SearchResponse response = new SearchResponse(true, count, paginatedResponses);
@@ -59,56 +89,31 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private List<SearchDataResponse> processSearch(String query, String site) throws IOException {
-        SiteEntity siteTarget = siteRepository.getSitePageByUrl(site);
-        Integer countPages = siteTarget != null ? pageRepository.getCountPages(siteTarget.getId()) : pageRepository.getCountPages(null);
-
-        List<LemmaEntity> lemmasForSearches = lemmaService.getLemmasFromText(query).keySet().stream()
-                .map(it -> lemmaRepository.findLemmasByLemmaAndSiteId(it, siteTarget != null ? siteTarget.getId() : null))
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
-
-        lemmasForSearches = filterLemmas(lemmasForSearches, countPages);
-
-        if (lemmasForSearches.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<LemmaEntity> sortedLemmasToSearches = sortLemmas(lemmasForSearches);
-        Map<Integer, IndexSearchEntity> indexesByLemmas = findIndexesByLemmas(sortedLemmasToSearches);
-
-        if (indexesByLemmas.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<TransferDTO> pagesRelevance = calculatePageRelevance(indexesByLemmas);
-        return prepareSearchDataResponses(lemmasForSearches, pagesRelevance);
+    // Метод для фильтрации частотных лемм
+    private void filterFrequentLemmas(List<LemmaEntity> lemmasForSearch, Integer countPages) {
+        lemmasForSearch.removeIf(lemma -> {
+            Integer lemmaFrequency = lemmaRepository.findCountPageByLemma(lemma.getLemma(), lemma.getSiteId());
+            if (lemmaFrequency == null) return true;
+            double frequencyLimit = (double) lemmaFrequency / countPages;
+            return frequencyLimit > frequencyLimitProportion;
+        });
     }
 
-    private List<LemmaEntity> filterLemmas(List<LemmaEntity> lemmasForSearches, Integer countPages) {
-        return lemmasForSearches.stream()
-                .filter(e -> {
-                    Integer lemmaFrequency = lemmaRepository.findCountPageByLemma(e.getLemma(), e.getSiteId());
-                    return lemmaFrequency != null && ((double) lemmaFrequency / countPages <= frequencyLimitProportion);
-                })
+    // Метод сортировки лемм по частоте
+    private List<LemmaEntity> sortLemmasByFrequency(List<LemmaEntity> lemmasForSearch) {
+        return lemmasForSearch.stream()
+                .sorted(Comparator.comparingInt(LemmaEntity::getFrequency))
                 .collect(Collectors.toList());
     }
 
-    private List<LemmaEntity> sortLemmas(List<LemmaEntity> lemmasForSearches) {
-        return lemmasForSearches.stream()
-                .map(l -> new AbstractMap.SimpleEntry<>(l.getFrequency(), l))
-                .sorted(Comparator.comparingInt(Map.Entry::getKey))
-                .map(Map.Entry::getValue)
-                .toList();
-    }
-
-    private Map<Integer, IndexSearchEntity> findIndexesByLemmas(List<LemmaEntity> sortedLemmasToSearches) {
-        Map<Integer, IndexSearchEntity> indexesByLemmas = indexRepository.findIndexesByLemma(sortedLemmasToSearches.get(0).getId())
+    // Метод поиска страниц по леммам
+    private Map<Integer, IndexSearchEntity> findPagesByLemmas(List<LemmaEntity> sortedLemmasToSearch) {
+        Map<Integer, IndexSearchEntity> indexesByLemmas = indexRepository.findIndexesByLemma(sortedLemmasToSearch.get(0).getId())
                 .stream()
                 .collect(Collectors.toMap(IndexSearchEntity::getPageId, index -> index));
 
-        for (int i = 1; i < sortedLemmasToSearches.size(); i++) {
-            List<IndexSearchEntity> indexNextLemma = indexRepository.findIndexesByLemma(sortedLemmasToSearches.get(i).getId());
+        for (int i = 1; i < sortedLemmasToSearch.size(); i++) {
+            List<IndexSearchEntity> indexNextLemma = indexRepository.findIndexesByLemma(sortedLemmasToSearch.get(i).getId());
             List<Integer> pagesToSave = indexNextLemma.stream()
                     .filter(indexNext -> indexesByLemmas.containsKey(indexNext.getPageId()))
                     .map(IndexSearchEntity::getPageId)
@@ -117,103 +122,116 @@ public class SearchServiceImpl implements SearchService {
         }
         return indexesByLemmas;
     }
-
+    // Метод расчета релевантности страниц
     private List<TransferDTO> calculatePageRelevance(Map<Integer, IndexSearchEntity> indexesByLemmas) {
-        Set<TransferDTO> pagesRelevance = new HashSet<>();
-        TransferDTO rankPage = new TransferDTO();
-        int pageId = -1;
+        Map<Integer, TransferDTO> pagesRelevanceMap = new HashMap<>();
 
         for (IndexSearchEntity index : indexesByLemmas.values()) {
-            if (index.getPageId() != pageId) {
-                if (pageId != -1) {
-                    rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
-                    pagesRelevance.add(rankPage);
-                }
-                rankPage = new TransferDTO();
-                rankPage.setPageEntity(index.getPageEntity());
-                rankPage.setPageId(index.getPageId());
-                pageId = index.getPageId();
-            }
+            int pageId = index.getPageId();
+            TransferDTO rankPage = pagesRelevanceMap.computeIfAbsent(pageId, id -> {
+                TransferDTO newRankPage = new TransferDTO();
+                newRankPage.setPageEntity(index.getPageEntity());
+                newRankPage.setPageId(pageId);
+                return newRankPage;
+            });
+
             rankPage.setAbsRelevance(rankPage.getAbsRelevance() + index.getLemmaCount());
             if (rankPage.getMaxLemmaRank() < index.getLemmaCount()) {
                 rankPage.setMaxLemmaRank(index.getLemmaCount());
             }
         }
 
-        if (pageId != -1) {
-            rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank());
-            pagesRelevance.add(rankPage);
-        }
+        // Вычисляем относительную релевантность
+        pagesRelevanceMap.values().forEach(rankPage ->
+                rankPage.setRelativeRelevance(rankPage.getAbsRelevance() / rankPage.getMaxLemmaRank()));
 
-        return pagesRelevance.stream()
+        // Сортируем по относительной релевантности
+        return pagesRelevanceMap.values().stream()
                 .sorted(Comparator.comparingDouble(TransferDTO::getRelativeRelevance).reversed())
-                .toList();
+                .collect(Collectors.toList());
     }
 
-    private List<SearchDataResponse> prepareSearchDataResponses(List<LemmaEntity> lemmasForSearches, List<TransferDTO> pagesRelevance) {
+    // Метод конвертации результатов в SearchDataResponse с неограниченным количеством сниппетов
+    private List<SearchDataResponse> convertToSearchDataResponses(List<LemmaEntity> lemmasForSearch, List<TransferDTO> pagesRelevanceSorted) throws IOException {
+        List<String> simpleLemmasFromSearch = lemmasForSearch.stream().map(LemmaEntity::getLemma).collect(Collectors.toList());
         List<SearchDataResponse> searchDataResponses = new ArrayList<>();
-        List<String> simpleLemmasFromSearch = lemmasForSearches.stream()
-                .map(LemmaEntity::getLemma)
-                .toList();
 
-        for (TransferDTO rank : pagesRelevance) {
+        for (TransferDTO rank : pagesRelevanceSorted) {
             Document doc = Jsoup.parse(rank.getPageEntity().getContent());
-            List<String> sentences = doc.body().getElementsMatchingOwnText(".*\\p{IsCyrillic}.*|.*\\p{IsLatin}.*")
-                    .stream()
-                    .map(Element::text)
-                    .toList();
+            List<String> sentences = doc.body().getElementsMatchingOwnText("[\\p{IsCyrillic}]").stream().map(Element::text).collect(Collectors.toList());
+            StringBuilder highlightedText = new StringBuilder();
 
             for (String sentence : sentences) {
                 StringBuilder textFromElement = new StringBuilder(sentence);
-                List<String> words = List.of(sentence.split("\\s+"));
-                int searchWords = 0;
+                List<String> words = List.of(sentence.split("[\\s\\p{Punct}]"));
+                boolean containsSearchWord = false;
 
                 for (String word : words) {
                     String lemmaFromWord = lemmaService.getLemmaByWord(word.replaceAll("\\p{Punct}", ""));
                     if (simpleLemmasFromSearch.contains(lemmaFromWord)) {
-                        markWord(textFromElement, word, 0);
-                        searchWords++;
+                        markQuery(textFromElement, word, 0);
+                        containsSearchWord = true;
                     }
                 }
 
-                if (searchWords > 0) {
-                    SiteEntity siteEntity = siteRepository.findById(pageRepository.findById(rank.getPageId()).get().getSiteId()).orElse(null);
-                    if (siteEntity != null) {
-                        searchDataResponses.add(new SearchDataResponse(
-                                siteEntity.getUrl(),
-                                siteEntity.getName(),
-                                rank.getPageEntity().getPath(),
-                                doc.title(),
-                                textFromElement.toString(),
-                                rank.getRelativeRelevance(),
-                                searchWords
-                        ));
-                    }
+                if (containsSearchWord) {
+                    highlightedText.append(textFromElement).append("... ");
+                }
+            }
+
+            if (highlightedText.length() > 0) {
+                SiteEntity sitePage = siteRepository.findById(pageRepository.findById(rank.getPageId()).get().getSiteId()).orElse(null);
+                if (sitePage != null) {
+                    searchDataResponses.add(new SearchDataResponse(
+                            sitePage.getUrl(),
+                            sitePage.getName(),
+                            rank.getPageEntity().getPath(),
+                            doc.title(),
+                            highlightedText.toString(),
+                            rank.getRelativeRelevance(),
+                            (int) rank.getAbsRelevance()));
                 }
             }
         }
-        return searchDataResponses;
+
+        return searchDataResponses.stream()
+                .sorted(Comparator.comparingDouble(SearchDataResponse::getRelevance).reversed())
+                .collect(Collectors.toList());
     }
 
-    private void markWord(StringBuilder textFromElement, String word, int startPosition) {
-        int start = textFromElement.indexOf(word, startPosition);
-        if (start == -1) return;
-        if (textFromElement.indexOf("<b>", start - 3) == (start - 3)) {
-            markWord(textFromElement, word, start + word.length());
-            return;
+    // Метод для подсветки слова в тексте
+    private void markQuery(StringBuilder textFromElement, String query, int startPosition) {
+        // Приведение запроса к нижнему регистру для поиска без учета регистра
+        String lowerCaseQuery = query.toLowerCase();
+
+        int start = textFromElement.toString().toLowerCase().indexOf(lowerCaseQuery, startPosition);
+
+        while (start != -1) {
+            // Проверка на наличие уже существующих тегов <b>
+            if (textFromElement.indexOf("<b>", start - 3) == (start - 3) ||
+                    textFromElement.indexOf("<b>", start + lowerCaseQuery.length()) == start + lowerCaseQuery.length()) {
+                start = textFromElement.toString().toLowerCase().indexOf(lowerCaseQuery, start + lowerCaseQuery.length());
+                continue;
+            }
+
+            // Вставка тегов <b> и </b>
+            int end = start + lowerCaseQuery.length();
+            textFromElement.insert(end, "</b>");
+            textFromElement.insert(start, "<b>");
+
+            // Продолжаем поиск с позиции после текущего вхождения
+            start = textFromElement.toString().toLowerCase().indexOf(lowerCaseQuery, end + 4);
         }
-        int end = start + word.length();
-        textFromElement.insert(start, "<b>");
-        textFromElement.insert(end + 3, "</b>");
     }
 
+    // Метод проверки статуса индексации сайта
     private Boolean checkIndexStatusNotIndexed(String site) {
         if (site == null || site.isBlank()) {
             return siteRepository.findAll().stream().anyMatch(s -> !s.getStatus().equals(indexSuccessStatus));
         }
-        return !siteRepository.getSitePageByUrl(site).getStatus().equals(indexSuccessStatus);
+        SiteEntity siteEntity = siteRepository.getSitePageByUrl(site);
+        return siteEntity == null || !siteEntity.getStatus().equals(indexSuccessStatus);
     }
-
     private List<SearchDataResponse> paginateResults(List<SearchDataResponse> searchDataResponses, Integer offset, Integer limit) {
         int startIndex = Math.max(0, offset);
         int endIndex = Math.min(offset + limit, searchDataResponses.size());
